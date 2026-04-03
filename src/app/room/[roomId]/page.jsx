@@ -4,20 +4,23 @@ import { useParams } from 'next/navigation'
 import React, { useEffect, useRef } from 'react'
 
 export default function page() {
-    const { getMediaStream, remoteVideoRef } = usePeer();
-    const videoRef = useRef();
-
-    useEffect(() => {
-        const init = async () => {
-            const stream = await getMediaStream();
-            videoRef.current.srcObject = stream;
-        };
-
-        init();
-    }, []);
+    const { localVideoRef, remoteVideoRef , getMediaStream } = usePeer();
 
     const { roomId } = useParams();
     console.log('romm id from room page', roomId)
+
+
+    useEffect(() => {
+        const init = async() => {
+            const stream = await getMediaStream();
+
+            if(localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+            }
+        }
+
+        init();
+    }, [getMediaStream])
 
     return (
         <div>
@@ -25,7 +28,7 @@ export default function page() {
             {/* video container */}
             <div className='flex flex-col gap-5 md:flex-row'>
                 <div>
-                    <video ref={videoRef} autoPlay playsInline muted></video>
+                    <video ref={localVideoRef} autoPlay playsInline muted></video>
                 </div>
                 <div>
                     <video ref={remoteVideoRef} autoPlay playsInline></video>

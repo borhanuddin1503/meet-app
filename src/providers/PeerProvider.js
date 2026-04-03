@@ -11,14 +11,24 @@ export default function PeerProvider({ children }) {
     // peer ref
     const peerRef = useRef();
     const remoteVideoRef = useRef();
+    const localVideoRef = useRef();
     const [candidates, setCandidates] = useState([])
 
     // create peer connection
     const peerConnection = () => {
         if (!peerRef.current) {
-            const configuration = {
-                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-            };
+           const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                {
+                    urls: 'turn:numb.viagenie.ca',
+                    credential: 'muazkh',
+                    username: 'webrtc@live.com'
+                },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
 
             const peer = new RTCPeerConnection(configuration);
 
@@ -59,21 +69,6 @@ export default function PeerProvider({ children }) {
     }
 
 
-    // handle ice candidate
-    // const handleICECandidate = (socket, remoteUserId) => {
-    //     const peer = peerConnection();
-
-    //     peer.onicecandidate = (event) => {
-    //         console.log("ICE event:", event);
-    //         if (event.candidate) {
-    //             socket.emit("send-ice", {
-    //                 candidate: event.candidate,
-    //                 to: remoteUserId
-    //             });
-    //         }
-    //     };
-    // };
-
 
     // handle add ice candidate
     const handleAddIceCandidate = async (candidate) => {
@@ -94,11 +89,21 @@ export default function PeerProvider({ children }) {
 
     // get media stream
     const getMediaStream = async () => {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: true
-        });
+        let stream;
 
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+
+            if(localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+            }
+        } catch (err) {
+            console.log("No camera/mic, using empty stream");
+            stream = new MediaStream();
+        }
         const peer = peerConnection();
 
         stream.getTracks().forEach(track => {
@@ -138,6 +143,7 @@ export default function PeerProvider({ children }) {
         handleAddIceCandidate,
         getMediaStream,
         remoteVideoRef,
+        localVideoRef,
         candidates
     }
 

@@ -15,8 +15,9 @@ export const useSocket = () => useContext(SocketContext);
 // provider component
 export default function SocketProvider({ children }) {
     const [socket, setSocket] = useState(null);
+    const [remoteUserId, setRemoteUserId] = useState(null);
     const router = useRouter();
-    const { createOffer, createAnswer, recievedAnswer, handleAddIceCandidate, candidates } = usePeer();
+    const { createOffer, createAnswer, recievedAnswer, handleAddIceCandidate, candidates  } = usePeer();
 
     useEffect(() => {
         const socketInstance = io(process.env.NEXT_PUBLIC_SOCKET_SERVER_URL || "http://localhost:5000");
@@ -35,7 +36,7 @@ export default function SocketProvider({ children }) {
 
         // create offer on new user joined  
         socketInstance.on("user-joined", async ({ userEmail, userId }) => {
-
+            setRemoteUserId(userId);
             const offer = await createOffer();
 
 
@@ -48,7 +49,6 @@ export default function SocketProvider({ children }) {
         // recieve offer and send answer
         socketInstance.on("receive-offer", async ({ offer, from }) => {
             console.log("offer received from", from, "with offer", offer);
-
             const answer = await createAnswer(offer);
 
 
@@ -81,9 +81,9 @@ export default function SocketProvider({ children }) {
     useEffect(() => {
         if (socket && candidates.length > 0) {
             const latestCandidate = candidates[candidates.length - 1];
-            socket.emit('send-ice', { candidate: latestCandidate });
+            socket.emit('send-ice', { candidate: latestCandidate  , to: remoteUserId});
         }
-    }, [candidates, socket]);
+    }, [candidates, socket , remoteUserId]);
 
 
     // join room
