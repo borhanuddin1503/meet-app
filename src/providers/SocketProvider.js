@@ -4,103 +4,121 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import { io } from 'socket.io-client';
 import { usePeer } from './PeerProvider';
 
-
-// socket context
 export const SocketContext = createContext(null);
-
-// useSocket hooks
 export const useSocket = () => useContext(SocketContext);
 
-
-// provider component
 export default function SocketProvider({ children }) {
     const [socket, setSocket] = useState(null);
     const [remoteUserId, setRemoteUserId] = useState(null);
     const router = useRouter();
-    const { createOffer, createAnswer, recievedAnswer, handleAddIceCandidate, candidates  } = usePeer();
+    const { createOffer, createAnswer, recievedAnswer, handleAddIceCandidate, candidates, getMediaStream } = usePeer();
 
     useEffect(() => {
         const socketInstance = io(process.env.NEXT_PUBLIC_SOCKET_SERVER_URL || "http://localhost:5000");
 
-        // connection
         socketInstance.on("connect", () => {
-            console.log(socketInstance.id);
+            console.log("Socket connected:", socketInstance.id);
             setSocket(socketInstance);
         });
 
-        // joined room
         socketInstance.on("joined-room", ({ roomId }) => {
+            console.log("Joined room:", roomId);
             router.push(`/room/${roomId}`);
-        })
-
-
-        // create offer on new user joined  
-        socketInstance.on("user-joined", async ({ userEmail, userId }) => {
-            setRemoteUserId(userId);
-            const offer = await createOffer();
-
-
-            socketInstance.emit("send-offer", { offer, to: userId });
         });
 
+        // 🔥 একজন ইউজার জয়েন করলে
+        socketInstance.on("user-joined", async ({ userEmail, userId }) => {
+            console.log("User joined event:", { userEmail, userId });
+            setRemoteUserId(userId);
 
+            // মিডিয়া স্ট্রিম নিন
+            const stream = await getMediaStream();
+            console.log("Media stream obtained:", stream?.id);
 
+            // একটু delay দিন ICE candidates সেটআপের জন্য
+            setTimeout(async () => {
+                const offer = await createOffer();
+                console.log("Offer created, sending to:", userId);
+                socketInstance.emit("send-offer", { offer, to: userId });
+            }, 1000);
+        });
 
-        // recieve offer and send answer
+        // 🔥 offer রিসিভ করলে
         socketInstance.on("receive-offer", async ({ offer, from }) => {
-            console.log("offer received from", from, "with offer", offer);
-            const answer = await createAnswer(offer);
+            console.log("Offer received from:", from);
+            setRemoteUserId(from);
 
+            // মিডিয়া স্ট্রিম নিন
+            const stream = await getMediaStream();
+            console.log("Media stream obtained for answer:", stream?.id);
 
-            // emit answer to the server
-            socketInstance.emit("send-answer", { answer, to: from });
-        })
+            setTimeout(async () => {
+                const answer = await createAnswer(offer);
+                console.log("Answer created, sending to:", from);
+                socketInstance.emit("send-answer", { answer, to: from });
+            }, 1000);
+        });
 
-
-
-        // recieve answer 
+        // 🔥 answer রিসিভ করলে
         socketInstance.on("receive-answer", async ({ answer, from }) => {
-            console.log("answer received from", from, "with answer", answer);
+            console.log("Answer received from:", from);
             await recievedAnswer(answer);
-        })
+        });
 
-
-        // recieve ice candidate (from peer)
+        // 🔥 ICE candidate রিসিভ করলে
         socketInstance.on("receive-ice", async ({ candidate, from }) => {
-            console.log('received ice candidate from', from, candidate);
+            console.log('ICE candidate received from:', from);
             await handleAddIceCandidate(candidate);
-        })
+        });
+
+        // 🔥 ICE candidate error
+        socketInstance.on("ice-candidate-error", (error) => {
+            console.error("ICE candidate error:", error);
+        });
 
         return () => {
             socketInstance.disconnect();
-        }
+        };
+    }, []); // খালি dependency array
 
-    }, []);
-
-
+    // 🔥 ICE candidate পাঠানো - remoteUserId চেক করে
+    // ICE candidate পাঠানোর জন্য - সব candidate ইমিট করুন
     useEffect(() => {
-        if (socket && candidates.length > 0) {
-            const latestCandidate = candidates[candidates.length - 1];
-            socket.emit('send-ice', { candidate: latestCandidate  , to: remoteUserId});
+        if (!socket || !remoteUserId) {
+            return;
         }
-    }, [candidates, socket , remoteUserId]);
 
+        // সব candidate ইমিট করুন, শুধু শেষটা না
+        if (candidates.length > 0) {
+            // সব candidate পাঠান
+            candidates.forEach(candidate => {
+                console.log("Sending ICE candidate to:", remoteUserId);
+                socket.emit("send-ice", {
+                    candidate: candidate,
+                    to: remoteUserId
+                });
+            });
+        }
+    }, [candidates, socket, remoteUserId]);
 
-    // join room
     const joinRoom = (roomId, userEmail) => {
         if (socket) {
+            console.log("Joining room:", roomId);
             socket.emit("join-room", { roomId, userEmail });
+        } else {
+            console.log("Socket not ready yet");
         }
-    }
+    };
 
     const values = {
         socket,
-        joinRoom
-    }
+        joinRoom,
+        remoteUserId
+    };
 
     return (
         <SocketContext.Provider value={values}>
             {children}
         </SocketContext.Provider>
-    )
+    );
 }
